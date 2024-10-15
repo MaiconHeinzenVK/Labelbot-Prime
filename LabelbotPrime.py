@@ -1,18 +1,14 @@
 import os
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-from datetime import datetime
-import pandas as pd
-import xml.etree.ElementTree as ET
+from tkinter import ttk, filedialog
 import win32print
-import win32ui
-from PIL import Image, ImageWin
-
+import win32api
+import subprocess
 
 class EtiquetaGenerator(ttk.Frame):
     def __init__(self, master):
         super().__init__(master)
-
+        self.selected_label = tk.StringVar()
         self.master = master
         self.init_ui()
 
@@ -117,6 +113,7 @@ class EtiquetaGenerator(ttk.Frame):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
+        
         # Generate etiquetas
         for Etiqueta in json_data:
             #Acessa os dados dos Itens
@@ -221,11 +218,13 @@ class ExportTab(ttk.Frame):
     print("teste")
 
 
-class PrintTab(ttk.Frame):
+class PrintTab(ttk.Frame): 
     def __init__(self, master):
         super().__init__(master)
         self.selected_label = tk.StringVar()
         self.master = master
+        self.file_list = []  # Lista de nomes de arquivos
+        self.sort_order = True  # True para crescente
         self.init_ui()
 
     def init_ui(self):
@@ -240,11 +239,19 @@ class PrintTab(ttk.Frame):
         self.folder_label = ttk.Label(self, textvariable=self.folder_path)
         self.folder_label.pack()
 
+        # Campo de entrada para filtro
+        self.filter_label = tk.Label(self, text="Filtrar por nome do arquivo:")
+        self.filter_label.pack(pady=5)
+
+        self.filter_entry = tk.Entry(self, width=50)
+        self.filter_entry.pack(pady=5)
+        self.filter_entry.bind("<KeyRelease>", lambda event: self.update_treeview())  # Atualiza a visualização ao digitar
+
         # Treeview para arquivos
-        self.file_list = ttk.Treeview(self, columns=("File Name", "File Path"), show="headings")
-        self.file_list.heading("File Name", text="Nome do Arquivo")
-        self.file_list.heading("File Path", text="Caminho Completo")
-        self.file_list.pack(pady=10)
+        self.tree = ttk.Treeview(self, columns=("File Name", "File Path"), show="headings")
+        self.tree.heading("File Name", text="Nome do Arquivo", command=self.sort_files)
+        self.tree.heading("File Path", text="Caminho Completo")
+        self.tree.pack(pady=10)
 
         # Combobox para etiquetas
         self.label_combobox = ttk.Label(self, text="Selecionar Etiqueta:")
@@ -261,30 +268,47 @@ class PrintTab(ttk.Frame):
         self.printer_combobox = ttk.Combobox(self, textvariable=self.selected_printer)
         self.printer_combobox.pack(pady=5)
         self.load_printers()
-        self.printer()
-
-        self.printer_combobox.bind("<<ComboboxSelected>>", lambda event: self.printer())
 
         # Botão para imprimir arquivos
-        self.print_button = ttk.Button(self, text="Imprimir Arquivos Selecionados", command=self.print_files)
+        self.print_button = ttk.Button(self, text="Imprimir Arquivos Selecionados", command=self.imprimir_selecionados)
         self.print_button.pack(pady=10)
-
 
     def select_folder(self):
         folder_path = filedialog.askdirectory()
-        self.folder_path.set(folder_path)
-        self.update_file_list()
+        if folder_path:
+            self.folder_path.set(folder_path)  # Atualiza o caminho da pasta
+            # Obter a lista de arquivos da pasta
+            self.file_list = os.listdir(folder_path)
+            # Ordenar a lista de arquivos (crescente)
+            self.file_list.sort(key=lambda x: x.lower())  
+            self.update_treeview()  # Atualizar a visualização
 
-    def update_file_list(self):
-        self.file_list.delete(*self.file_list.get_children())  # Limpar a lista de arquivos
-        folder = self.folder_path.get()
-        if folder:
-            for file in os.listdir(folder):
-                full_path = os.path.join(folder, file)
-                self.file_list.insert("", "end", values=(file, full_path))
+    def update_treeview(self):
+        # Limpar a Treeview antes de adicionar novos arquivos
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        # Obter o texto do filtro
+        filter_text = self.filter_entry.get().lower()
+
+        # Filtrar e ordenar arquivos
+        filtered_files = [file_name for file_name in self.file_list if filter_text in file_name.lower()]
+        filtered_files.sort(key=lambda x: x.lower())  # Ordenar em ordem crescente
+
+        # Adicionar arquivos à Treeview com base no filtro
+        for file_name in filtered_files:
+            full_path = os.path.join(self.folder_path.get(), file_name)
+            self.tree.insert("", "end", values=(file_name, full_path))
+
+    def sort_files(self):
+        # Alternar a ordem de exibição
+        self.sort_order = not self.sort_order  
+        # Ordenar a lista de arquivos (crescente ou decrescente)
+        self.file_list.sort(key=lambda x: x.lower(), reverse=not self.sort_order)  
+        self.update_treeview()  # Atualizar Treeview
 
     def load_printers(self):
-    # Enumera as impressoras disponíveis e as adiciona ao combobox
+        # Enumera as impressoras disponíveis e as adiciona ao combobox
         printers = [printer[2] for printer in win32print.EnumPrinters(2)]
         self.printer_combobox['values'] = printers
 
@@ -303,62 +327,39 @@ class PrintTab(ttk.Frame):
         else:
             print("Etiqueta não encontrada.")
 
-    def printer(self):
-        printer = self.selected_printer.get()
-        print(f"Valor da impressora selecionada: '{printer}'")  # Debug: imprimir o valor
-        if printer:
-            print(f"Impressora selecionada: {printer}")
-        else:
-            print("Nenhuma impressora selecionada.")
-
-    def print_files(self):
-        selected_items = self.file_list.selection()
+    def imprimir_selecionados(self):
+        selected_items = self.tree.selection()  # Obtém os itens selecionados
         if selected_items:
-            files = [self.file_list.item(item, "values")[1] for item in selected_items]
+            files = [self.tree.item(item, "values")[1] for item in selected_items]  # Caminhos dos arquivos selecionados
+            print("Arquivos selecionados para impressão:", files)
 
-        try:
-            # Definir as dimensões da etiqueta selecionada
-            printer_name = self.selected_printer.get()
-            
-            if self.selected_label.get() == "ET0087":
-                label_width_cm = 7
-                label_height_cm = 10
-            elif self.selected_label.get() == "ET0240":
-                label_width_cm = 10
-                label_height_cm = 17
-            else:
-                messagebox.showerror("Erro", "Etiqueta não reconhecida.")
+            printer = self.selected_printer.get()
+            if not printer:
+                print("Nenhuma impressora selecionada.")
                 return
 
             for file_path in files:
                 try:
-                    # Abrir o arquivo PDF
-                    pdf_file_path = file_path
-                    with open(pdf_file_path, 'rb') as f:
-                        pdf_data = f.read()
+                    # Normaliza o caminho do arquivo
+                    file_path = os.path.normpath(file_path)
 
-                    # Configurar a impressora
-                    hprinter = win32print.OpenPrinter(printer_name)
-                    hdc = win32ui.CreateDC()
-                    hdc.CreatePrinterDC(printer_name)
-
-                    # Enviar o arquivo PDF para a impressora
-                    win32print.StartDoc(hdc, pdf_file_path)
-                    win32print.StartPage(hdc)
-                    win32print.WritePrinter(hdc, pdf_data)
-                    win32print.EndPage(hdc)
-                    win32print.EndDoc(hdc)
-
-                    win32print.ClosePrinter(hprinter)
-
-                    messagebox.showinfo("Sucesso", f"Arquivo {os.path.basename(file_path)} enviado para a impressora!")
+                    # Verifica se o arquivo existe
+                    if os.path.exists(file_path):
+                        # Se for um arquivo PDF, usa o Adobe Reader
+                        if file_path.lower().endswith(".pdf"):
+                            acro_reader = r"C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe"
+                            command = f'"{acro_reader}" /h /t "{file_path}" "{printer}"'
+                            subprocess.run(command, check=True)
+                        else:
+                            # Envia o arquivo para a impressora selecionada
+                            win32api.ShellExecute(0, "print", file_path, None, ".", 0)
+                        print(f"Arquivo {file_path} enviado para a impressora {printer}.")
+                    else:
+                        print(f"Arquivo {file_path} não encontrado.")
                 except Exception as e:
-                    messagebox.showerror("Erro", f"Erro ao imprimir {os.path.basename(file_path)}: {str(e)}")
-
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao acessar impressora: {str(e)}")
+                    print(f"Erro ao enviar {file_path} para a impressora: {e}")
         else:
-            messagebox.showwarning("Imprimir Arquivos", "Nenhum arquivo selecionado.")
+            print("Nenhum arquivo foi selecionado.")
 
 if __name__ == "__main__":
     root = tk.Tk()
@@ -372,14 +373,8 @@ if __name__ == "__main__":
     etiqueta_generator = EtiquetaGenerator(notebook)
     notebook.add(etiqueta_generator, text="Gerador de Etiqueta")
 
-    #Aba Exportação
-    export_tab = ExportTab(notebook)
-    notebook.add(export_tab, text="Exportação")
-
     # Adicionar a aba "Imprimir"
     print_tab = PrintTab(notebook)
     notebook.add(print_tab, text="Imprimir")
 
-
     root.mainloop()
-
