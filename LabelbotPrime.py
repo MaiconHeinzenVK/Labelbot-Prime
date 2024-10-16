@@ -4,6 +4,9 @@ from tkinter import ttk, filedialog
 import win32print
 import win32api
 import subprocess
+import datetime
+import re
+
 
 class EtiquetaGenerator(ttk.Frame):
     def __init__(self, master):
@@ -249,7 +252,8 @@ class PrintTab(ttk.Frame):
 
         # Treeview para arquivos
         self.tree = ttk.Treeview(self, columns=("File Name", "File Path"), show="headings")
-        self.tree.heading("File Name", text="Nome do Arquivo", command=self.sort_files)
+        #self.tree.column("File Name", text="Id")
+        self.tree.heading("File Name", text="Nome do Arquivo")
         self.tree.heading("File Path", text="Caminho Completo")
         self.tree.pack(pady=10)
 
@@ -279,9 +283,14 @@ class PrintTab(ttk.Frame):
             self.folder_path.set(folder_path)  # Atualiza o caminho da pasta
             # Obter a lista de arquivos da pasta
             self.file_list = os.listdir(folder_path)
-            # Ordenar a lista de arquivos (crescente)
-            self.file_list.sort(key=lambda x: x.lower())  
+            # Ordenar a lista de arquivos (crescente) com base nos números
+            self.file_list.sort(key=self.natural_sort_key)  
             self.update_treeview()  # Atualizar a visualização
+
+
+    def natural_sort_key(self, text):
+    # Função para separar números de texto e ordenar corretamente
+        return [int(part) if part.isdigit() else part.lower() for part in re.split(r'(\d+)', text)]
 
     def update_treeview(self):
         # Limpar a Treeview antes de adicionar novos arquivos
@@ -293,7 +302,7 @@ class PrintTab(ttk.Frame):
 
         # Filtrar e ordenar arquivos
         filtered_files = [file_name for file_name in self.file_list if filter_text in file_name.lower()]
-        filtered_files.sort(key=lambda x: x.lower())  # Ordenar em ordem crescente
+        filtered_files.sort(key=self.natural_sort_key)  # Ordenar em ordem crescente
 
         # Adicionar arquivos à Treeview com base no filtro
         for file_name in filtered_files:
