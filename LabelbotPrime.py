@@ -6,7 +6,8 @@ import win32api
 import subprocess
 import datetime
 import re
-
+import time
+import win32gui
 
 class EtiquetaGenerator(ttk.Frame):
     def __init__(self, master):
@@ -346,7 +347,7 @@ class PrintTab(ttk.Frame):
             if not printer:
                 print("Nenhuma impressora selecionada.")
                 return
-
+            
             for file_path in files:
                 try:
                     # Normaliza o caminho do arquivo
@@ -354,14 +355,9 @@ class PrintTab(ttk.Frame):
 
                     # Verifica se o arquivo existe
                     if os.path.exists(file_path):
-                        # Se for um arquivo PDF, usa o Adobe Reader
-                        if file_path.lower().endswith(".pdf"):
-                            acro_reader = r"C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe"
-                            command = f'"{acro_reader}" /h /t "{file_path}" "{printer}"'
-                            subprocess.run(command, check=True)
-                        else:
-                            # Envia o arquivo para a impressora selecionada
-                            win32api.ShellExecute(0, "print", file_path, None, ".", 0)
+                        # Se for um arquivo PDF, usa o Adobe Reader  
+                       # Envia o arquivo para a impressora selecionada
+                        win32api.ShellExecute(0, "print", file_path, None, ".", 0)
                         print(f"Arquivo {file_path} enviado para a impressora {printer}.")
                     else:
                         print(f"Arquivo {file_path} não encontrado.")
@@ -369,6 +365,8 @@ class PrintTab(ttk.Frame):
                     print(f"Erro ao enviar {file_path} para a impressora: {e}")
         else:
             print("Nenhum arquivo foi selecionado.")
+
+
 
 if __name__ == "__main__":
     root = tk.Tk()
